@@ -128,22 +128,23 @@ def update(prefix, prune=False, fast=False):
     conn.close()
 
 
-def delete(prefix, entry_name):
+def delete(prefix, entry_name, force=False):
     if not check_output_dir(prefix):
         return
 
     db_path = f"{prefix}.db"
     output_dir = f"{prefix}/"
 
-    print(
-        f"WARNING: This will permanently delete all files matching '{entry_name}*' in '{output_dir}'"
-    )
-    print(f"and remove the entry from the database '{db_path}'.")
-    confirm = input("Are you sure? Type 'yes' to confirm: ")
+    if not force:
+        print(
+            f"WARNING: This will permanently delete all files matching '{entry_name}*' in '{output_dir}'"
+        )
+        print(f"and remove the entry from the database '{db_path}'.")
+        confirm = input("Are you sure? Type 'yes' to confirm: ")
 
-    if confirm.strip().lower() != "yes":
-        print("Aborted.")
-        return
+        if confirm.strip().lower() != "yes":
+            print("Aborted.")
+            return
 
     deleted_files = []
     for file in os.listdir(output_dir):
@@ -405,7 +406,9 @@ def setup_parser():
         metavar="{update|print|print_entry|print_diff|number|search|delete}",
     )
 
-    parser_update = subparsers.add_parser("update", aliases=["u"])
+    parser_update = subparsers.add_parser(
+        "update", aliases=["u"], help="Skip files already present in the database"
+    )
     parser_update.add_argument(
         "--prefix",
         type=str,
@@ -491,6 +494,9 @@ def setup_parser():
         "entry_name", type=str, help="Name of the output entry to delete"
     )
     parser_delete.add_argument(
+        "--force", action="store_true", help="Delete without confirmation"
+    )
+    parser_delete.add_argument(
         "--prefix",
         type=str,
         default="output",
@@ -538,7 +544,7 @@ def main():
     elif args.action == "print_diff":
         print_diff(args.prefix, args.entry1, args.entry2)
     elif args.action == "delete":
-        delete(args.prefix, args.entry_name)
+        delete(args.prefix, args.entry_name, force=args.force)
 
 
 if __name__ == "__main__":
