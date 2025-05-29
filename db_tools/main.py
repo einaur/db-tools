@@ -34,6 +34,13 @@ def add_entry_to_database(conn, filename, inputs, ckpt_status):
     conn.commit()
 
 
+def fetch_inputs(conn, filename):
+    cursor = conn.cursor()
+    cursor.execute("SELECT inputs FROM output_files WHERE filename = ?", (filename,))
+    result = cursor.fetchone()
+    return json.loads(result[0]) if result else None
+
+
 def load_input_keys():
     default_path = os.path.join(os.path.dirname(__file__), "dbtools.inputs.json")
     keys = {}
@@ -77,6 +84,22 @@ def check_output_dir(prefix):
     return True
 
 
+def load_info_file(file_path):
+    if file_path.endswith(".npz"):
+        data = np.load(file_path, allow_pickle=True)
+        inputs = data["inputs"].item()
+        ckpt_status = data["ckpt_status"].item() if "ckpt_status" in data else None
+        return inputs, ckpt_status
+    elif file_path.endswith(".json"):
+        with open(file_path, "r") as f:
+            data = json.load(f)
+        inputs = data.get("inputs", {})
+        ckpt_status = data.get("ckpt_status", None)
+        return inputs, ckpt_status
+    else:
+        raise ValueError(f"Unsupported file format: {file_path}")
+
+
 def update(prefix, prune=False, fast=False):
     if not check_output_dir(prefix):
         return
@@ -97,8 +120,8 @@ def update(prefix, prune=False, fast=False):
     seen_filenames = set()
 
     for file in os.listdir(output_dir):
-        if file.endswith("_info.npz"):
-            filename = file.replace("_info.npz", "")
+        if file.endswith("_info.npz") or file.endswith("_info.json"):
+            filename = file.replace("_info.npz", "").replace("_info.json", "")
             seen_filenames.add(filename)
 
             if fast and filename in existing_filenames:
@@ -106,11 +129,7 @@ def update(prefix, prune=False, fast=False):
 
             file_path = os.path.join(output_dir, file)
             try:
-                data = np.load(file_path, allow_pickle=True)
-                inputs = data["inputs"].item()
-                ckpt_status = (
-                    data["ckpt_status"].item() if "ckpt_status" in data else None
-                )
+                inputs, ckpt_status = load_info_file(file_path)
                 add_entry_to_database(conn, filename, inputs, ckpt_status)
             except Exception as e:
                 print(f"Failed to process file {file_path}: {e}")
@@ -272,15 +291,15 @@ def format_entry(
 
     elif print_style == "diff":
         if differing_keys is None:
-            return f"{index} Filename: {filename}, (diff keys missing)"
+            return f"{index} Filename: {filename}  (diff keys missing)"
         diff_inputs = {}
         for key in differing_keys:
             value = inputs.get(key, "<missing>")
             diff_inputs[key] = value
-        return f"{index} Filename: {filename}, Differing Inputs: {json.dumps(diff_inputs, indent=2)}"
+        return f"{index} Filename: {filename}  Differing Inputs: {json.dumps(diff_inputs, indent=2)}"
 
     else:
-        line = f"{index} Filename: {filename}, Inputs: {json.dumps(inputs, indent=2)}"
+        line = f"{index} Filename: {filename}  Inputs: {json.dumps(inputs, indent=2)}"
         if ckpt_status is not None:
             line += f", ckpt_status: {ckpt_status}"
         return line
@@ -326,30 +345,42 @@ def print_entry(prefix, filename, print_style="full"):
         print(f"No record found for filename '{filename}'.")
 
 
-def print_diff(prefix, entry1, entry2):
-    if not check_output_dir(prefix):
-        return
+def format_diff_horizontal(entry1, entry2, inputs1, inputs2):
+    differing_keys = sorted(set(inputs1.keys()) | set(inputs2.keys()))
+    rows = []
 
-    db_path = f"{prefix}.db"
-    conn = get_db_connection(db_path)
-    cursor = conn.cursor()
+    for key in differing_keys:
+        val1 = inputs1.get(key, "<missing>")
+        val2 = inputs2.get(key, "<missing>")
+        if val1 != val2:
+            rows.append((key, str(val1), str(val2)))
 
-    def fetch_inputs(filename):
-        cursor.execute(
-            "SELECT inputs FROM output_files WHERE filename = ?", (filename,)
+    if not rows:
+        return "No differences found."
+
+    key_width = max(len("Key"), max(len(k) for k, _, _ in rows))
+    val1_width = max(len(entry1), max(len(v1) for _, v1, _ in rows))
+    val2_width = max(len(entry2), max(len(v2) for _, _, v2 in rows))
+
+    header = (
+        f"{'Key'.ljust(key_width)}   "
+        f"{entry1.ljust(val1_width)}   "
+        f"{entry2.ljust(val2_width)}"
+    )
+    separator = "-" * (key_width + val1_width + val2_width + 6)
+    lines = [header, separator]
+
+    for key, val1, val2 in rows:
+        lines.append(
+            f"{key.ljust(key_width)}   "
+            f"{val1.ljust(val1_width)}   "
+            f"{val2.ljust(val2_width)}"
         )
-        result = cursor.fetchone()
-        return json.loads(result[0]) if result else None
 
-    inputs1 = fetch_inputs(entry1)
-    inputs2 = fetch_inputs(entry2)
+    return "\n".join(lines)
 
-    conn.close()
 
-    if not inputs1 or not inputs2:
-        print(f"Error: One or both entries not found in database.")
-        return
-
+def format_diff_vertical(entry1, entry2, inputs1, inputs2):
     all_keys = set(inputs1.keys()) | set(inputs2.keys())
     diff = {}
 
@@ -360,16 +391,39 @@ def print_diff(prefix, entry1, entry2):
             diff[key] = (val1, val2)
 
     if not diff:
-        print(f"No differing parameters between the two entries.")
+        return "No differing parameters between the two entries."
+
+    lines = ["Differences:"]
+    for key, (v1, v2) in diff.items():
+        lines.append(f"- {key}:\n    [1] = {v1}\n    [2] = {v2}")
+
+    lines.append("\nFilenames:")
+    lines.append(f"[1]: {entry1}")
+    lines.append(f"[2]: {entry2}")
+    return "\n".join(lines)
+
+
+def print_diff(prefix, entry1, entry2, style="horizontal"):
+    if not check_output_dir(prefix):
         return
 
-    print("Differences:")
-    for key, (v1, v2) in diff.items():
-        print(f"- {key}:\n    [1] = {v1}\n    [2] = {v2}")
+    db_path = f"{prefix}.db"
+    conn = get_db_connection(db_path)
+    cursor = conn.cursor()
 
-    print("\nFilenames:")
-    print(f"[1]: {entry1}")
-    print(f"[2]: {entry2}")
+    inputs1 = fetch_inputs(conn, entry1)
+    inputs2 = fetch_inputs(conn, entry2)
+
+    conn.close()
+
+    if not inputs1 or not inputs2:
+        print("Error: One or both entries not found in database.")
+        return
+
+    if style == "horizontal":
+        print(format_diff_horizontal(entry1, entry2, inputs1, inputs2))
+    else:
+        print(format_diff_vertical(entry1, entry2, inputs1, inputs2))
 
 
 def parse_search(parser):
@@ -448,7 +502,9 @@ def setup_parser():
     add_print_options(parser_print_entry)
 
     parser_print_diff = subparsers.add_parser(
-        "print_diff", aliases=["pd"], help="Print differing inputs between two entries"
+        "print_diff",
+        aliases=["pd", "diff"],
+        help="Print differing inputs between two entries",
     )
     parser_print_diff.add_argument("entry1", type=str)
     parser_print_diff.add_argument("entry2", type=str)
@@ -458,6 +514,12 @@ def setup_parser():
         type=str,
         default="output",
         help="Name of output directory and prefix for .db file",
+    )
+    parser_print_diff.add_argument(
+        "--style",
+        choices=["horizontal", "vertical"],
+        default="horizontal",
+        help="Format of the comparison output",
     )
 
     parser_number = subparsers.add_parser(
@@ -511,6 +573,7 @@ def setup_parser():
         "p": "print",
         "pe": "print_entry",
         "pd": "print_diff",
+        "diff": "print_diff",
         "d": "delete",
         "n": "number",
     }
@@ -542,7 +605,7 @@ def main():
         entries = search(args.prefix, args)
         print_db_results(entries, args.print_style)
     elif args.action == "print_diff":
-        print_diff(args.prefix, args.entry1, args.entry2)
+        print_diff(args.prefix, args.entry1, args.entry2, style=args.style)
     elif args.action == "delete":
         delete(args.prefix, args.entry_name, force=args.force)
 
