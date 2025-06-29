@@ -42,21 +42,32 @@ def fetch_inputs(conn, filename):
 
 
 def load_input_keys():
-    default_path = os.path.join(os.path.dirname(__file__), "dbtools.inputs.json")
     keys = {}
 
+    local_replace = os.path.join(os.getcwd(), "dbtools.inputs.replace.json")
+    if os.path.exists(local_replace):
+        with open(local_replace) as f:
+            return json.load(f)
+
+    config_dir = os.path.join(os.path.expanduser("~"), ".config", "dbtools")
+    config_replace = os.path.join(config_dir, "inputs.replace.json")
+    if os.path.exists(config_replace):
+        with open(config_replace) as f:
+            return json.load(f)
+
+    default_path = os.path.join(os.path.dirname(__file__), "dbtools.inputs.json")
     if os.path.exists(default_path):
         with open(default_path) as f:
             keys.update(json.load(f))
 
-    replace_path = os.path.join(os.getcwd(), "dbtools.inputs.replace.json")
-    if os.path.exists(replace_path):
-        with open(replace_path) as f:
-            return json.load(f)
+    local_append = os.path.join(os.getcwd(), "dbtools.inputs.json")
+    if os.path.exists(local_append):
+        with open(local_append) as f:
+            keys.update(json.load(f))
 
-    append_path = os.path.join(os.getcwd(), "dbtools.inputs.json")
-    if os.path.exists(append_path):
-        with open(append_path) as f:
+    config_append = os.path.join(config_dir, "inputs.json")
+    if os.path.exists(config_append):
+        with open(config_append) as f:
             keys.update(json.load(f))
 
     return keys
