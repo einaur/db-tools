@@ -38,6 +38,7 @@ The tool comes with a set of default accepted input parameters defined in `dbtoo
 
 - Accepted input parameters can be dynamically appended using a file with the same name in the current working directory (the directory from which you run the dbtools command)
 - The input parameters are fully replaced if a file named `dbtools.inputs.replace.json` is present in the current working directory
+- If no such files are found locally, the tool will look for `inputs.json` and `inputs.replace.json` in the configuration directory `~/.config/dbtools/` using the same logic (replace takes precedence over append).
 
 ---
 
