@@ -1,1 +1,2 @@
 include db_tools/dbtools.inputs.json
+include db_tools/dbtools.search_config.json

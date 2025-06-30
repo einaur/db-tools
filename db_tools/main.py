@@ -41,36 +41,43 @@ def fetch_inputs(conn, filename):
     return json.loads(result[0]) if result else None
 
 
+def load_config(basename):
+    config_name = f"{basename}.json"
+    replace_name = f"{basename}.replace.json"
+
+    cwd = os.getcwd()
+    config_home = os.path.expanduser("~/.config/dbtools")
+    install_dir = os.path.dirname(__file__)
+
+    replace_paths = [
+        os.path.join(cwd, "dbtools." + replace_name),
+        os.path.join(config_home, replace_name),
+    ]
+
+    for path in replace_paths:
+        if os.path.exists(path):
+            with open(path) as f:
+                return json.load(f)
+
+    config = {}
+    for path in [
+        os.path.join(install_dir, "dbtools." + config_name),
+        os.path.join(config_home, config_name),
+        os.path.join(cwd, "dbtools." + config_name),
+    ]:
+        if os.path.exists(path):
+            with open(path) as f:
+                config.update(json.load(f))
+
+    return config
+
+
 def load_input_keys():
-    keys = {}
+    return load_config("inputs")
 
-    local_replace = os.path.join(os.getcwd(), "dbtools.inputs.replace.json")
-    if os.path.exists(local_replace):
-        with open(local_replace) as f:
-            return json.load(f)
 
-    config_dir = os.path.join(os.path.expanduser("~"), ".config", "dbtools")
-    config_replace = os.path.join(config_dir, "inputs.replace.json")
-    if os.path.exists(config_replace):
-        with open(config_replace) as f:
-            return json.load(f)
-
-    default_path = os.path.join(os.path.dirname(__file__), "dbtools.inputs.json")
-    if os.path.exists(default_path):
-        with open(default_path) as f:
-            keys.update(json.load(f))
-
-    local_append = os.path.join(os.getcwd(), "dbtools.inputs.json")
-    if os.path.exists(local_append):
-        with open(local_append) as f:
-            keys.update(json.load(f))
-
-    config_append = os.path.join(config_dir, "inputs.json")
-    if os.path.exists(config_append):
-        with open(config_append) as f:
-            keys.update(json.load(f))
-
-    return keys
+def load_search_config():
+    return load_config("search_config")
 
 
 def str2bool(val):
@@ -217,13 +224,12 @@ def number(prefix):
 
 
 def get_search_keywords(args):
-    inputs = vars(args).copy()
-
-    for key in ["prefix", "action", "print_style", "limit", "no_update"]:
-        inputs.pop(key, None)
-
-    search_keywords = {k: v for k, v in inputs.items() if v is not None}
-    return search_keywords
+    input_keys = load_input_keys()
+    return {
+        key: getattr(args, key, None)
+        for key in input_keys
+        if getattr(args, key, None) is not None
+    }
 
 
 def find_filenames_by_subset_inputs(search_inputs, db_connection):
@@ -289,8 +295,17 @@ def get_differing_keys(entries):
 
 
 def format_entry(
-    index, filename, inputs, ckpt_status, print_style, differing_keys=None
+    index,
+    filename,
+    inputs,
+    ckpt_status,
+    print_style,
+    differing_keys=None,
+    print_keys=None,
 ):
+    if print_keys is not None:
+        inputs = {k: v for k, v in inputs.items() if k in print_keys}
+
     if print_style == "names":
         return filename
 
@@ -316,7 +331,7 @@ def format_entry(
         return line
 
 
-def print_db_results(entries, print_style="full"):
+def print_db_results(entries, print_style="full", print_keys=None):
     differing_keys = None
     if print_style == "diff":
         differing_keys = get_differing_keys(entries)
@@ -326,7 +341,13 @@ def print_db_results(entries, print_style="full"):
         for i, (filename, inputs, ckpt_status) in enumerate(entries):
             print(
                 format_entry(
-                    i, filename, inputs, ckpt_status, print_style, differing_keys
+                    i,
+                    filename,
+                    inputs,
+                    ckpt_status,
+                    print_style,
+                    differing_keys,
+                    print_keys,
                 )
             )
     else:
@@ -557,6 +578,11 @@ def setup_parser():
         default="output",
         help="Name of output directory and prefix for .db file",
     )
+    parser_search.add_argument(
+        "--search-config",
+        type=str,
+        help="Name of a predefined search config (from search_config.json or search_config.replace.json)",
+    )
     parse_search(parser_search)
     add_print_options(parser_search)
 
@@ -595,6 +621,19 @@ def setup_parser():
     return args
 
 
+def apply_search_config(args, search_configs):
+    config = search_configs.get(args.search_config)
+    if config is None:
+        print(f"Error: search_config '{args.search_config}' not found.")
+        return False
+
+    for k, v in config.get("filters", {}).items():
+        setattr(args, k, v)
+    if "print_keys" in config:
+        args.print_keys = config["print_keys"]
+    return True
+
+
 def main():
     args = setup_parser()
 
@@ -613,8 +652,14 @@ def main():
     elif args.action == "search":
         if not args.no_update:
             update(args.prefix, fast=True)
+
+        if getattr(args, "search_config", None):
+            search_configs = load_search_config()
+            if not apply_search_config(args, search_configs):
+                return
+
         entries = search(args.prefix, args)
-        print_db_results(entries, args.print_style)
+        print_db_results(entries, args.print_style, getattr(args, "print_keys", None))
     elif args.action == "print_diff":
         print_diff(args.prefix, args.entry1, args.entry2, style=args.style)
     elif args.action == "delete":
