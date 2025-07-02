@@ -28,5 +28,5 @@
     "BICGSTAB_tol": "float",
     "use_mask": "bool",
     "laser_class": "str",
-    "comment": "str",
+    "comment": "str"
 }
