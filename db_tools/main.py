@@ -14,31 +14,50 @@ def create_table_if_not_exists(conn):
     cursor = conn.cursor()
     cursor.execute(
         """
-    CREATE TABLE IF NOT EXISTS output_files (
-        id INTEGER PRIMARY KEY,
-        filename TEXT NOT NULL UNIQUE,
-        inputs TEXT NOT NULL,
-        is_ckpt BOOLEAN
-    )
-    """
+        CREATE TABLE IF NOT EXISTS output_files (
+            id INTEGER PRIMARY KEY,
+            filename TEXT NOT NULL UNIQUE,
+            inputs TEXT NOT NULL,
+            extra_fields TEXT
+        )
+        """
     )
     conn.commit()
 
 
-def add_entry_to_database(conn, filename, inputs, ckpt_status):
+def ensure_extra_fields_column(conn):
+    cursor = conn.cursor()
+    cursor.execute("PRAGMA table_info(output_files)")
+    columns = [row[1] for row in cursor.fetchall()]
+    if "extra_fields" not in columns:
+        cursor.execute("ALTER TABLE output_files ADD COLUMN extra_fields TEXT")
+        conn.commit()
+
+
+def add_entry_to_database(conn, filename, inputs, extra_fields):
     cursor = conn.cursor()
     cursor.execute(
-        "INSERT OR REPLACE INTO output_files (filename, inputs, is_ckpt) VALUES (?, ?, ?)",
-        (filename, json.dumps(inputs), ckpt_status),
+        "INSERT OR REPLACE INTO output_files (filename, inputs, extra_fields) VALUES (?, ?, ?)",
+        (
+            filename,
+            json.dumps(inputs),
+            json.dumps(extra_fields) if extra_fields else None,
+        ),
     )
     conn.commit()
 
 
 def fetch_inputs(conn, filename):
     cursor = conn.cursor()
-    cursor.execute("SELECT inputs FROM output_files WHERE filename = ?", (filename,))
+    cursor.execute(
+        "SELECT inputs, extra_fields FROM output_files WHERE filename = ?", (filename,)
+    )
     result = cursor.fetchone()
-    return json.loads(result[0]) if result else None
+    if result:
+        inputs = json.loads(result[0])
+        extra_fields = json.loads(result[1]) if result[1] else {}
+        return inputs, extra_fields
+    return None, None
 
 
 def load_config(basename):
@@ -106,14 +125,22 @@ def load_info_file(file_path):
     if file_path.endswith(".npz"):
         data = np.load(file_path, allow_pickle=True)
         inputs = data["inputs"].item()
-        ckpt_status = data["ckpt_status"].item() if "ckpt_status" in data else None
-        return inputs, ckpt_status
+        extra_fields = {}
+        for k in data.files:
+            if k == "inputs":
+                continue
+            try:
+                v = data[k].item()
+            except Exception:
+                v = data[k]
+            extra_fields[k] = v
+        return inputs, extra_fields
     elif file_path.endswith(".json"):
         with open(file_path, "r") as f:
             data = json.load(f)
         inputs = data.get("inputs", {})
-        ckpt_status = data.get("ckpt_status", None)
-        return inputs, ckpt_status
+        extra_fields = {k: v for k, v in data.items() if k != "inputs"}
+        return inputs, extra_fields
     else:
         raise ValueError(f"Unsupported file format: {file_path}")
 
@@ -127,6 +154,7 @@ def update(prefix, prune=False, fast=False):
 
     conn = get_db_connection(db_path)
     create_table_if_not_exists(conn)
+    ensure_extra_fields_column(conn)
 
     cursor = conn.cursor()
 
@@ -147,8 +175,8 @@ def update(prefix, prune=False, fast=False):
 
             file_path = os.path.join(output_dir, file)
             try:
-                inputs, ckpt_status = load_info_file(file_path)
-                add_entry_to_database(conn, filename, inputs, ckpt_status)
+                inputs, extra_fields = load_info_file(file_path)
+                add_entry_to_database(conn, filename, inputs, extra_fields)
             except Exception as e:
                 print(f"Failed to process file {file_path}: {e}")
 
@@ -235,7 +263,7 @@ def get_search_keywords(args):
 def find_filenames_by_subset_inputs(search_inputs, db_connection):
     cursor = db_connection.cursor()
 
-    query = "SELECT filename, inputs, is_ckpt FROM output_files"
+    query = "SELECT filename, inputs, extra_fields FROM output_files"
     conditions = []
     params = []
 
@@ -250,10 +278,11 @@ def find_filenames_by_subset_inputs(search_inputs, db_connection):
     results = cursor.fetchall()
 
     matching_entries = []
-    for filename, inputs_json, is_ckpt in results:
+    for filename, inputs_json, extra_fields_json in results:
         inputs = json.loads(inputs_json)
+        extra_fields = json.loads(extra_fields_json) if extra_fields_json else {}
         if all(item in inputs.items() for item in search_inputs.items()):
-            matching_entries.append((filename, inputs, is_ckpt))
+            matching_entries.append((filename, inputs, extra_fields))
 
     return matching_entries
 
@@ -298,56 +327,58 @@ def format_entry(
     index,
     filename,
     inputs,
-    ckpt_status,
     print_style,
     differing_keys=None,
     print_keys=None,
+    extra_field=None,
+    show_fields=None,
 ):
     if print_keys is not None:
         inputs = {k: v for k, v in inputs.items() if k in print_keys}
 
     if print_style == "names":
-        return filename
-
+        out = filename
     elif print_style == "brief":
-        line = f"{index} Filename: {filename}"
-        if ckpt_status is not None:
-            line += f", ckpt_status: {ckpt_status}"
-        return line
-
+        out = f"{index} Filename: {filename}"
     elif print_style == "diff":
         if differing_keys is None:
-            return f"{index} Filename: {filename}  (diff keys missing)"
-        diff_inputs = {}
-        for key in differing_keys:
-            value = inputs.get(key, "<missing>")
-            diff_inputs[key] = value
-        return f"{index} Filename: {filename}  Differing Inputs: {json.dumps(diff_inputs, indent=2)}"
-
+            out = f"{index} Filename: {filename}  (diff keys missing)"
+        else:
+            diff_inputs = {key: inputs.get(key, "<missing>") for key in differing_keys}
+            out = f"{index} Filename: {filename}  Differing Inputs: {json.dumps(diff_inputs, indent=2)}"
     else:
-        line = f"{index} Filename: {filename}  Inputs: {json.dumps(inputs, indent=2)}"
-        if ckpt_status is not None:
-            line += f", ckpt_status: {ckpt_status}"
-        return line
+        out = f"{index} Filename: {filename}  Inputs: {json.dumps(inputs, indent=2)}"
+
+    if show_fields and extra_field:
+        for field in show_fields:
+            if field in extra_field:
+                val = extra_field[field]
+                if isinstance(val, dict):
+                    out += f"\n{field}:\n" + json.dumps(val, indent=2)
+                else:
+                    out += f"\n{field}: {val}"
+
+    return out
 
 
-def print_db_results(entries, print_style="full", print_keys=None):
+def print_db_results(entries, print_style="full", print_keys=None, show_field=None):
     differing_keys = None
     if print_style == "diff":
         differing_keys = get_differing_keys(entries)
 
     if entries:
         print("Matching entries:")
-        for i, (filename, inputs, ckpt_status) in enumerate(entries):
+        for i, (filename, inputs, extra_fields) in enumerate(entries):
             print(
                 format_entry(
                     i,
                     filename,
                     inputs,
-                    ckpt_status,
                     print_style,
                     differing_keys,
                     print_keys,
+                    extra_field=extra_fields,
+                    show_fields=show_field,
                 )
             )
     else:
@@ -355,7 +386,7 @@ def print_db_results(entries, print_style="full", print_keys=None):
     print("Number of matching records:", len(entries))
 
 
-def print_entry(prefix, filename, print_style="full"):
+def print_entry(prefix, filename, print_style="full", show_field=None):
     if not check_output_dir(prefix):
         return
 
@@ -364,15 +395,24 @@ def print_entry(prefix, filename, print_style="full"):
     cursor = conn.cursor()
 
     cursor.execute(
-        "SELECT inputs, is_ckpt FROM output_files WHERE filename = ?", (filename,)
+        "SELECT inputs, extra_fields FROM output_files WHERE filename = ?", (filename,)
     )
     result = cursor.fetchone()
     conn.close()
 
     if result:
         inputs = json.loads(result[0])
-        ckpt_status = result[1]
-        print(format_entry(0, filename, inputs, ckpt_status, print_style))
+        extra_field = json.loads(result[1]) if result[1] else {}
+        print(
+            format_entry(
+                0,
+                filename,
+                inputs,
+                print_style,
+                extra_field=extra_field,
+                show_fields=show_field,
+            )
+        )
     else:
         print(f"No record found for filename '{filename}'.")
 
@@ -441,11 +481,8 @@ def print_diff(prefix, entry1, entry2, style="horizontal"):
 
     db_path = f"{prefix}.db"
     conn = get_db_connection(db_path)
-    cursor = conn.cursor()
-
-    inputs1 = fetch_inputs(conn, entry1)
-    inputs2 = fetch_inputs(conn, entry2)
-
+    inputs1, extra_fields1 = fetch_inputs(conn, entry1)
+    inputs2, extra_fields2 = fetch_inputs(conn, entry2)
     conn.close()
 
     if not inputs1 or not inputs2:
@@ -493,7 +530,7 @@ def setup_parser():
     )
 
     parser_update = subparsers.add_parser(
-        "update", aliases=["u"], help="Skip files already present in the database"
+        "update", aliases=["u"], help="Scan output directory and update database."
     )
     parser_update.add_argument(
         "--prefix",
@@ -520,6 +557,12 @@ def setup_parser():
         help="Name of output directory and prefix for .db file",
     )
     add_print_options(parser_print)
+    parser_print.add_argument(
+        "--show-field",
+        action="append",
+        default=[],
+        help="Show extra field(s) (e.g., metadata, timings, extra_field) in printouts if present",
+    )
 
     parser_print_entry = subparsers.add_parser(
         "print_entry", aliases=["pe"], help="Print a single database entry"
@@ -531,7 +574,18 @@ def setup_parser():
         default="output",
         help="Name of output directory and prefix for .db file",
     )
-    add_print_options(parser_print_entry)
+    parser_print_entry.add_argument(
+        "--print-style",
+        choices=["names", "brief", "full", "diff"],
+        default="full",
+        help="Style of output formatting",
+    )
+    parser_print_entry.add_argument(
+        "--show-field",
+        action="append",
+        default=[],
+        help="Show extra field(s) (e.g., metadata, timings, extra_field) in printouts if present",
+    )
 
     parser_print_diff = subparsers.add_parser(
         "print_diff",
@@ -583,6 +637,13 @@ def setup_parser():
         type=str,
         help="Name of a predefined search config (from search_config.json or search_config.replace.json)",
     )
+    parser_search.add_argument(
+        "--show-field",
+        action="append",
+        default=[],
+        help="Show extra field(s) (e.g., metadata, timings, extra_field) in printouts if present",
+    )
+
     parse_search(parser_search)
     add_print_options(parser_search)
 
@@ -646,9 +707,13 @@ def main():
         number(args.prefix)
     elif args.action == "print":
         entries = search(args.prefix, argparse.Namespace())
-        print_db_results(entries, args.print_style)
+        print_db_results(
+            entries, print_style=args.print_style, show_field=args.show_field
+        )
     elif args.action == "print_entry":
-        print_entry(args.prefix, args.entry_name, args.print_style)
+        print_entry(
+            args.prefix, args.entry_name, args.print_style, show_field=args.show_field
+        )
     elif args.action == "search":
         if not args.no_update:
             update(args.prefix, fast=True)
@@ -659,7 +724,12 @@ def main():
                 return
 
         entries = search(args.prefix, args)
-        print_db_results(entries, args.print_style, getattr(args, "print_keys", None))
+        print_db_results(
+            entries,
+            print_style=args.print_style,
+            print_keys=getattr(args, "print_keys", None),
+            show_field=args.show_field,
+        )
     elif args.action == "print_diff":
         print_diff(args.prefix, args.entry1, args.entry2, style=args.style)
     elif args.action == "delete":
