@@ -1,0 +1,13 @@
+{
+  "gs": {
+    "filters": {
+      "save_gs": true
+    },
+    "print_keys": [
+      "N",
+      "r_max",
+      "charge",
+      "atom"
+    ]
+  }
+}
