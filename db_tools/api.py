@@ -1,5 +1,5 @@
-from db_tools.db import get_db_connection, fetch_inputs
-from db_tools.search import find_filenames_by_subset_inputs
+from .db import get_db_connection, fetch_inputs
+from .search import find_filenames_by_subset_inputs
 
 
 class DBTools:

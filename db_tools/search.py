@@ -1,6 +1,6 @@
 import json
 
-from db_tools.config import load_input_keys
+from .config import load_input_keys
 
 
 def get_search_keywords(args):

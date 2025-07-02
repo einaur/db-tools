@@ -3,7 +3,7 @@ import os
 import numpy as np
 import sys
 
-from db_tools.db import (
+from .db import (
     get_db_connection,
     create_table_if_not_exists,
     ensure_extra_fields_column,
@@ -12,24 +12,24 @@ from db_tools.db import (
     delete_db_entry,
 )
 
-from db_tools.io import (
+from .io import (
     load_info_file,
     delete_output_files,
 )
 
-from db_tools.search import (
+from .search import (
     get_search_keywords,
     find_filenames_by_subset_inputs,
 )
 
-from db_tools.print import (
+from .print import (
     print_db_results,
     print_entry,
     print_diff,
 )
 
-from db_tools.config import load_input_keys, load_search_config
-from db_tools.utils import check_output_dir, TYPE_MAP
+from .config import load_input_keys, load_search_config
+from .utils import check_output_dir, TYPE_MAP
 
 
 def update(prefix, prune=False, fast=False):

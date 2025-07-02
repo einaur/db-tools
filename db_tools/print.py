@@ -1,7 +1,7 @@
 import json
-from db_tools.search import get_differing_keys
-from db_tools.db import get_db_connection, fetch_inputs
-from db_tools.utils import check_output_dir
+from .search import get_differing_keys
+from .db import get_db_connection, fetch_inputs
+from .utils import check_output_dir
 
 
 def format_entry(
