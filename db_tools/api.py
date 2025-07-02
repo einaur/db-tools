@@ -1,4 +1,5 @@
 from .db import get_db_connection, fetch_inputs
+from .main import update
 from .search import find_filenames_by_subset_inputs
 
 
@@ -10,7 +11,10 @@ class DBTools:
     def set_base_filters(self, **kwargs):
         self.base_filters = kwargs
 
-    def search(self, **filters):
+    def search(self, fast_update=True, **filters):
+        if fast_update:
+            self.update(fast=True)
+
         all_filters = self.base_filters.copy()
         all_filters.update(filters)
 
@@ -26,3 +30,6 @@ class DBTools:
         inputs = fetch_inputs(conn, fileroot)
         conn.close()
         return inputs
+
+    def update(self, fast=True, prune=False):
+        update(self.prefix, fast=fast, prune=prune)
