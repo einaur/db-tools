@@ -52,9 +52,7 @@ def test_update_with_prune(tmp_path):
 
     (output_dir / "run1_info.npz").unlink()
 
-    subprocess.run(
-        ["dbtools", "update", "--prefix", str(output_dir), "--prune"], check=True
-    )
+    subprocess.run(["dbtools", "update", "--prefix", str(output_dir)], check=True)
 
     result = subprocess.run(
         ["dbtools", "search", "--prefix", str(output_dir)],

@@ -179,9 +179,9 @@ def setup_parser():
         help="Name of output directory and prefix for .db file",
     )
     parser_update.add_argument(
-        "--prune",
+        "--no-prune",
         action="store_true",
-        help="Remove database entries for missing output files",
+        help="Do not remove database entries for missing output files",
     )
     parser_update.add_argument(
         "--fast", action="store_true", help="Skip files already present in the database"
@@ -267,6 +267,11 @@ def setup_parser():
         help="Skip automatic update --fast before searching",
     )
     parser_search.add_argument(
+        "--no-prune",
+        action="store_true",
+        help="Do not remove database entries for missing output files",
+    )
+    parser_search.add_argument(
         "--prefix",
         type=str,
         default="output",
@@ -342,7 +347,7 @@ def main():
         return
 
     if args.action == "update":
-        update(args.prefix, prune=args.prune, fast=args.fast)
+        update(args.prefix, prune=not args.no_prune, fast=args.fast)
     elif args.action == "number":
         number(args.prefix)
     elif args.action == "print":
@@ -356,7 +361,7 @@ def main():
         )
     elif args.action == "search":
         if not args.no_update:
-            update(args.prefix, prune=True, fast=True)
+            update(args.prefix, prune=not args.no_prune, fast=True)
 
         if getattr(args, "search_config", None):
             search_configs = load_search_config()
