@@ -25,7 +25,8 @@ def test_delete(tmp_path):
     db_path = os.path.join(prefix, "dbtools.db")
     conn = get_db_connection(db_path)
     create_table_if_not_exists(conn)
-    add_entry_to_database(conn, fileroot, {"omega": 0.057, "dt": 0.05}, None)
+    mtime = os.path.getmtime(info_path)
+    add_entry_to_database(conn, fileroot, {"omega": 0.057, "dt": 0.05}, None, mtime)
     conn.close()
 
     subprocess.run(

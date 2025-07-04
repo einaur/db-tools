@@ -45,10 +45,11 @@ def update(prefix, prune=True, fast=False):
 
     cursor = conn.cursor()
 
-    existing_filenames = set()
     if fast:
-        cursor.execute("SELECT filename FROM output_files")
-        existing_filenames = {row[0] for row in cursor.fetchall()}
+        cursor.execute("SELECT filename, mtime FROM output_files")
+        db_mtimes = dict(cursor.fetchall())
+    else:
+        db_mtimes = {}
 
     seen_filenames = set()
 
@@ -57,13 +58,19 @@ def update(prefix, prune=True, fast=False):
             filename = file.replace("_info.npz", "").replace("_info.json", "")
             seen_filenames.add(filename)
 
-            if fast and filename in existing_filenames:
-                continue
-
             file_path = os.path.join(output_dir, file)
+            current_mtime = os.path.getmtime(file_path)
+
+            if fast and filename in db_mtimes:
+                db_mtime = db_mtimes[filename]
+                if abs(db_mtime - current_mtime) < 1e-6:
+                    continue
+
             try:
                 inputs, extra_fields = load_info_file(file_path)
-                add_entry_to_database(conn, filename, inputs, extra_fields)
+                add_entry_to_database(
+                    conn, filename, inputs, extra_fields, current_mtime
+                )
             except Exception as e:
                 print(f"Failed to process file {file_path}: {e}")
 

@@ -14,7 +14,8 @@ def create_table_if_not_exists(conn):
             id INTEGER PRIMARY KEY,
             filename TEXT NOT NULL UNIQUE,
             inputs TEXT NOT NULL,
-            extra_fields TEXT
+            extra_fields TEXT,
+            mtime REAL
         )
         """
     )
@@ -30,14 +31,15 @@ def ensure_extra_fields_column(conn):
         conn.commit()
 
 
-def add_entry_to_database(conn, filename, inputs, extra_fields):
+def add_entry_to_database(conn, filename, inputs, extra_fields, mtime):
     cursor = conn.cursor()
     cursor.execute(
-        "INSERT OR REPLACE INTO output_files (filename, inputs, extra_fields) VALUES (?, ?, ?)",
+        "INSERT OR REPLACE INTO output_files (filename, inputs, extra_fields, mtime) VALUES (?, ?, ?, ?)",
         (
             filename,
             json.dumps(inputs),
             json.dumps(extra_fields) if extra_fields else None,
+            mtime,
         ),
     )
     conn.commit()
