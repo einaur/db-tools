@@ -1,4 +1,5 @@
 import subprocess
+import os
 import numpy as np
 
 
@@ -21,7 +22,7 @@ def test_delete(tmp_path):
     np.savez(info_path, inputs={"omega": 0.057, "dt": 0.05})
     np.savez(samples_path, samples=np.array([1, 2, 3]))
 
-    db_path = tmp_path / "output.db"
+    db_path = os.path.join(prefix, "dbtools.db")
     conn = get_db_connection(db_path)
     create_table_if_not_exists(conn)
     add_entry_to_database(conn, fileroot, {"omega": 0.057, "dt": 0.05}, None)

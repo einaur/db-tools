@@ -1,4 +1,5 @@
 import subprocess
+import os
 import numpy as np
 from tests.utils import make_info_npz
 from db_tools.main import get_db_connection
@@ -8,7 +9,7 @@ def test_update(tmp_path):
     output_dir = tmp_path / "output"
     output_dir.mkdir()
     prefix = str(output_dir)
-    db_path = tmp_path / "output.db"
+    db_path = os.path.join(prefix, "dbtools.db")
 
     fileroot = "run1"
 

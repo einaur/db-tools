@@ -37,7 +37,7 @@ def update(prefix, prune=True, fast=False):
         return
 
     output_dir = f"{prefix}/"
-    db_path = f"{prefix}.db"
+    db_path = os.path.join(prefix, "dbtools.db")
 
     conn = get_db_connection(db_path)
     create_table_if_not_exists(conn)
@@ -84,7 +84,7 @@ def delete(prefix, entry_name, force=False):
     if not check_output_dir(prefix):
         return
 
-    db_path = f"{prefix}.db"
+    db_path = os.path.join(prefix, "dbtools.db")
     output_dir = f"{prefix}/"
 
     if not force:
@@ -112,7 +112,7 @@ def delete(prefix, entry_name, force=False):
 
 
 def number(prefix):
-    db_path = f"{prefix}.db"
+    db_path = os.path.join(prefix, "dbtools.db")
     conn = get_db_connection(db_path)
     num_entries = count_entries(conn)
     conn.close()
@@ -123,7 +123,7 @@ def search(prefix, args):
     if not check_output_dir(prefix):
         return []
 
-    db_path = f"{prefix}.db"
+    db_path = os.path.join(prefix, "dbtools.db")
     conn = get_db_connection(db_path)
 
     search_keywords = get_search_keywords(args)

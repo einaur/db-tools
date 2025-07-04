@@ -1,4 +1,5 @@
 import json
+import os
 from .search import get_differing_keys
 from .db import get_db_connection, fetch_inputs
 from .utils import check_output_dir
@@ -71,7 +72,7 @@ def print_entry(prefix, filename, print_style="full", show_field=None):
     if not check_output_dir(prefix):
         return
 
-    db_path = f"{prefix}.db"
+    db_path = os.path.join(prefix, "dbtools.db")
     conn = get_db_connection(db_path)
     cursor = conn.cursor()
 
@@ -102,7 +103,7 @@ def print_diff(prefix, entry1, entry2, style="horizontal"):
     if not check_output_dir(prefix):
         return
 
-    db_path = f"{prefix}.db"
+    db_path = os.path.join(prefix, "dbtools.db")
     conn = get_db_connection(db_path)
     inputs1, extra_fields1 = fetch_inputs(conn, entry1)
     inputs2, extra_fields2 = fetch_inputs(conn, entry2)

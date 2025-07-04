@@ -1,3 +1,4 @@
+import os
 from .db import get_db_connection, fetch_inputs
 from .main import update
 from .search import find_filenames_by_subset_inputs
@@ -18,14 +19,14 @@ class DBTools:
         all_filters = self.base_filters.copy()
         all_filters.update(filters)
 
-        db_path = f"{self.prefix}.db"
+        db_path = os.path.join(self.prefix, "dbtools.db")
         conn = get_db_connection(db_path)
         results = find_filenames_by_subset_inputs(all_filters, conn)
         conn.close()
         return [filename for filename, _, _ in results]
 
     def get_inputs(self, fileroot):
-        db_path = f"{self.prefix}.db"
+        db_path = os.path.join(self.prefix, "dbtools.db")
         conn = get_db_connection(db_path)
         inputs = fetch_inputs(conn, fileroot)
         conn.close()
