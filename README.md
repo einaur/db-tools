@@ -68,9 +68,9 @@ dbtools search -E0=0.01 -omega=0.057 --print-style=diff
 ```text
 dbtools update
 ```
-### Update and remove database entries for missing output files
+### Update but do not remove database entries for missing output files
 ```text
-dbtools update --prune
+dbtools update --no-prune
 ```
 ### Update, but skip files already present in the database
 (does not catch changes in existing _info.npz files)
