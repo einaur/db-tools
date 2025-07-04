@@ -32,7 +32,7 @@ from .config import load_input_keys, load_search_config
 from .utils import check_output_dir, TYPE_MAP
 
 
-def update(prefix, prune=False, fast=False):
+def update(prefix, prune=True, fast=False):
     if not check_output_dir(prefix):
         return
 
@@ -356,7 +356,7 @@ def main():
         )
     elif args.action == "search":
         if not args.no_update:
-            update(args.prefix, fast=True)
+            update(args.prefix, prune=True, fast=True)
 
         if getattr(args, "search_config", None):
             search_configs = load_search_config()
