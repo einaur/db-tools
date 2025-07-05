@@ -142,6 +142,19 @@ def search(prefix, args):
     return entries
 
 
+def apply_search_config(args, search_configs):
+    config = search_configs.get(args.search_config)
+    if config is None:
+        print(f"Error: search_config '{args.search_config}' not found.")
+        return False
+
+    for k, v in config.get("filters", {}).items():
+        setattr(args, k, v)
+    if "print_keys" in config:
+        args.print_keys = config["print_keys"]
+    return True
+
+
 def parse_search(parser):
     input_keys = load_input_keys()
 
@@ -155,13 +168,54 @@ def parse_search(parser):
         parser.add_argument(f"-{key}", type=TYPE_MAP[typestr], help=argparse.SUPPRESS)
 
 
+def add_prefix(parser):
+    parser.add_argument(
+        "--prefix",
+        type=str,
+        default="output",
+        help="Name of output directory and prefix for .db file",
+    )
+
+
 def add_print_options(parser):
-    group = parser.add_argument_group("output options")
-    group.add_argument(
+    parser.add_argument(
         "--print-style",
         choices=["names", "brief", "full", "diff"],
         default="full",
         help="Style of output formatting",
+    )
+
+    parser.add_argument(
+        "--show-field",
+        action="append",
+        default=[],
+        help="Show extra field(s) (e.g., metadata, timings, extra_field) in printouts if present",
+    )
+
+
+def add_update_options(parser):
+    parser.add_argument(
+        "--no-prune",
+        action="store_true",
+        help="Do not remove database entries for missing output files",
+    )
+
+    parser.add_argument(
+        "--fast", action="store_true", help="Skip files already present in the database"
+    )
+
+
+def add_auto_update_options(parser):
+    parser.add_argument(
+        "--no-update",
+        action="store_true",
+        help="Skip automatic update --fast before running this command",
+    )
+
+    parser.add_argument(
+        "--no-prune",
+        action="store_true",
+        help="Do not remove database entries for missing output files",
     )
 
 
@@ -176,78 +230,48 @@ def setup_parser():
         metavar="{update|print|print_entry|print_diff|number|search|delete}",
     )
 
-    parser_update = subparsers.add_parser(
-        "update", aliases=["u"], help="Scan output directory and update database."
-    )
-    parser_update.add_argument(
-        "--prefix",
-        type=str,
-        default="output",
-        help="Name of output directory and prefix for .db file",
-    )
-    parser_update.add_argument(
-        "--no-prune",
-        action="store_true",
-        help="Do not remove database entries for missing output files",
-    )
-    parser_update.add_argument(
-        "--fast", action="store_true", help="Skip files already present in the database"
+    # number
+    parser_number = subparsers.add_parser(
+        "number", aliases=["n"], help="Print number of entries in database"
     )
 
+    add_prefix(parser_number)
+    add_auto_update_options(parser_number)
+
+    # print
     parser_print = subparsers.add_parser(
         "print", aliases=["p"], help="Print all database entries"
     )
-    parser_print.add_argument(
-        "--prefix",
-        type=str,
-        default="output",
-        help="Name of output directory and prefix for .db file",
-    )
-    add_print_options(parser_print)
-    parser_print.add_argument(
-        "--show-field",
-        action="append",
-        default=[],
-        help="Show extra field(s) (e.g., metadata, timings, extra_field) in printouts if present",
-    )
 
+    add_prefix(parser_print)
+    add_auto_update_options(parser_print)
+    add_print_options(parser_print)
+
+    # print_entry
     parser_print_entry = subparsers.add_parser(
         "print_entry", aliases=["pe"], help="Print a single database entry"
     )
-    parser_print_entry.add_argument("entry_name", type=str)
-    parser_print_entry.add_argument(
-        "--prefix",
-        type=str,
-        default="output",
-        help="Name of output directory and prefix for .db file",
-    )
-    parser_print_entry.add_argument(
-        "--print-style",
-        choices=["names", "brief", "full", "diff"],
-        default="full",
-        help="Style of output formatting",
-    )
-    parser_print_entry.add_argument(
-        "--show-field",
-        action="append",
-        default=[],
-        help="Show extra field(s) (e.g., metadata, timings, extra_field) in printouts if present",
-    )
 
+    add_prefix(parser_print_entry)
+    add_auto_update_options(parser_print_entry)
+    add_print_options(parser_print_entry)
+
+    parser_print_entry.add_argument("entry_name", type=str)
+
+    # print_diff
     parser_print_diff = subparsers.add_parser(
         "print_diff",
         aliases=["pd", "diff"],
         help="Print differing inputs between two entries",
     )
+
+    add_prefix(parser_print_diff)
+    add_auto_update_options(parser_print_diff)
+
     parser_print_diff.add_argument("entry1", type=str)
     parser_print_diff.add_argument("entry2", type=str)
     parser_print_diff.add_argument("-name", type=str, default="output")
-    parser_print_diff.add_argument(
-        "--prefix",
-        type=str,
-        default="output",
-        help="Name of output directory and prefix for .db file",
-    )
+
     parser_print_diff.add_argument(
         "--style",
         choices=["horizontal", "vertical"],
@@ -255,64 +279,43 @@ def setup_parser():
         help="Format of the comparison output",
     )
 
-    parser_number = subparsers.add_parser(
-        "number", aliases=["n"], help="Print number of entries in database"
-    )
-    parser_number.add_argument(
-        "--prefix",
-        type=str,
-        default="output",
-        help="Name of output directory and prefix for .db file",
-    )
-
+    # search
     parser_search = subparsers.add_parser(
         "search", aliases=["s"], help="Search for entries matching input subset"
     )
-    parser_search.add_argument(
-        "--no-update",
-        action="store_true",
-        help="Skip automatic update --fast before searching",
-    )
-    parser_search.add_argument(
-        "--no-prune",
-        action="store_true",
-        help="Do not remove database entries for missing output files",
-    )
-    parser_search.add_argument(
-        "--prefix",
-        type=str,
-        default="output",
-        help="Name of output directory and prefix for .db file",
-    )
+
+    add_prefix(parser_search)
+    add_auto_update_options(parser_search)
+    parse_search(parser_search)
+    add_print_options(parser_search)
+
     parser_search.add_argument(
         "--search-config",
         type=str,
         help="Name of a predefined search config (from search_config.json or search_config.replace.json)",
     )
-    parser_search.add_argument(
-        "--show-field",
-        action="append",
-        default=[],
-        help="Show extra field(s) (e.g., metadata, timings, extra_field) in printouts if present",
+
+    # update
+    parser_update = subparsers.add_parser(
+        "update", aliases=["u"], help="Scan output directory and update database."
     )
 
-    parse_search(parser_search)
-    add_print_options(parser_search)
+    add_prefix(parser_update)
+    add_update_options(parser_update)
 
+    # delete
     parser_delete = subparsers.add_parser(
         "delete", aliases=["d"], help="Delete database entry and related output files"
     )
+
+    add_prefix(parser_delete)
+
     parser_delete.add_argument(
         "entry_name", type=str, help="Name of the output entry to delete"
     )
+
     parser_delete.add_argument(
         "--force", action="store_true", help="Delete without confirmation"
-    )
-    parser_delete.add_argument(
-        "--prefix",
-        type=str,
-        default="output",
-        help="Database name/output directory prefix",
     )
 
     args = parser.parse_args()
@@ -334,17 +337,9 @@ def setup_parser():
     return args
 
 
-def apply_search_config(args, search_configs):
-    config = search_configs.get(args.search_config)
-    if config is None:
-        print(f"Error: search_config '{args.search_config}' not found.")
-        return False
-
-    for k, v in config.get("filters", {}).items():
-        setattr(args, k, v)
-    if "print_keys" in config:
-        args.print_keys = config["print_keys"]
-    return True
+def fast_update_if_needed(args):
+    if not getattr(args, "no_update", False):
+        update(args.prefix, prune=not args.no_prune, fast=True)
 
 
 def main():
@@ -353,23 +348,27 @@ def main():
     if not check_output_dir(args.prefix):
         return
 
-    if args.action == "update":
-        update(args.prefix, prune=not args.no_prune, fast=args.fast)
-    elif args.action == "number":
+    if args.action in {"number", "print", "print_entry", "print_diff", "search"}:
+        fast_update_if_needed(args)
+
+    if args.action == "number":
         number(args.prefix)
+
     elif args.action == "print":
         entries = search(args.prefix, argparse.Namespace())
         print_db_results(
             entries, print_style=args.print_style, show_field=args.show_field
         )
+
     elif args.action == "print_entry":
         print_entry(
             args.prefix, args.entry_name, args.print_style, show_field=args.show_field
         )
-    elif args.action == "search":
-        if not args.no_update:
-            update(args.prefix, prune=not args.no_prune, fast=True)
 
+    elif args.action == "print_diff":
+        print_diff(args.prefix, args.entry1, args.entry2, style=args.style)
+
+    elif args.action == "search":
         if getattr(args, "search_config", None):
             search_configs = load_search_config()
             if not apply_search_config(args, search_configs):
@@ -382,8 +381,10 @@ def main():
             print_keys=getattr(args, "print_keys", None),
             show_field=args.show_field,
         )
-    elif args.action == "print_diff":
-        print_diff(args.prefix, args.entry1, args.entry2, style=args.style)
+
+    elif args.action == "update":
+        update(args.prefix, prune=not args.no_prune, fast=args.fast)
+
     elif args.action == "delete":
         delete(args.prefix, args.entry_name, force=args.force)
 
