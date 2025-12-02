@@ -1,20 +1,26 @@
 import os
 from .db import get_db_connection, fetch_inputs
-from .main import update
+from .main import update as update_database
 from .search import find_filenames_by_subset_inputs
 
+from dataclasses import dataclass, field, replace
 
+
+@dataclass(frozen=True)
 class DBTools:
-    def __init__(self, prefix="output"):
-        self.prefix = prefix
-        self.base_filters = {}
+    prefix: str = field(default="output")
+    base_filters: dict[str, str] = field(default_factory=dict)
+    fileroots: list[str] = field(default_factory=list)
 
-    def set_base_filters(self, **filters):
-        self.base_filters = filters
+    def with_prefix(self, prefix):
+        return replace(self, prefix=prefix)
 
-    def search(self, no_update=False, **filters):
-        if not no_update:
-            self.update(prune=True, fast=True)
+    def with_base_filters(self, **base_filters):
+        return replace(self, base_filters=base_filters)
+
+    def search(self, update=True, **filters):
+        if update:
+            update_database(self.prefix, prune=True, fast=True)
 
         all_filters = self.base_filters.copy()
         all_filters.update(filters)
@@ -23,7 +29,9 @@ class DBTools:
         conn = get_db_connection(db_path)
         results = find_filenames_by_subset_inputs(all_filters, conn)
         conn.close()
-        return [filename for filename, _, _ in results]
+        fileroots = [fileroot for fileroot, _, _ in results]
+
+        return replace(self, fileroots=fileroots)
 
     def get_inputs(self, fileroot):
         db_path = os.path.join(self.prefix, "dbtools.db")
@@ -32,5 +40,5 @@ class DBTools:
         conn.close()
         return inputs
 
-    def update(self, prune=True, fast=False):
-        update(self.prefix, fast=fast, prune=prune)
+    def load(self):
+        raise NotImplementedError
