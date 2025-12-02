@@ -14,15 +14,15 @@ dbtools = DBTools(prefix=output_dir)
 # optional: set base filters which will be included in
 # every subsequent .search() call unless you override it
 dbtools.set_base_filters(
-    comment="example_runs",
-    E0=1.0,
+    tag="example_runs",
+    E0=0.01,
     dt=0.1,
     omega=0.2,
 )
 
 # search for runs by their parameters
-fileroot1 = dbtools.search(r_max=20, N=30)[0]
-fileroot2 = dbtools.search(r_max=30, N=45)[0]
+fileroot1 = dbtools.search(r_max=32, N=48)[0]
+fileroot2 = dbtools.search(r_max=36, N=54)[0]
 fileroot3 = dbtools.search(r_max=40, N=60)[0]
 
 # fetch and print input parameters for a run
