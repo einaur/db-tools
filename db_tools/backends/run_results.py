@@ -1,5 +1,6 @@
 import numpy as np
 
+
 class AttrDict(dict):
     def __getattr__(self, name):
         try:
@@ -28,9 +29,7 @@ def allow_exactly_one_fileroot(fileroots):
         if n_fileroots == 0:
             raise NoMatchError("The DBTools instance does not have any fileroots")
         else:
-            raise MultipleMatchesError(
-                "The DBTools instance has multiple fileroots"
-            )
+            raise MultipleMatchesError("The DBTools instance has multiple fileroots")
 
     else:
         raise TypeError("Fileroots must be of type 'str' or 'list'")
