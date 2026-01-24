@@ -18,6 +18,9 @@ class DBTools:
     def with_base_filters(self, **base_filters):
         return replace(self, base_filters=base_filters)
 
+    def with_fileroots(self, fileroots):
+        return replace(self, fileroots=fileroots)
+
     def search(self, update=True, **filters):
         if update:
             update_database(self.prefix, prune=True, fast=True)
